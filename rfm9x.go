@@ -140,7 +140,6 @@ func (rfm *RFM9x) Init(opts Options) (err error) {
 	if opts.TxTimeoutMs != 0 {
 		rfm.Options.TxTimeoutMs = opts.TxTimeoutMs
 	}
-
 	rfm.SpiDevice.Configure(machine.SPIConfig{
 		Frequency: rfm.Options.SpiSpeedHz,
 		Mode:      0,
