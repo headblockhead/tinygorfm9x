@@ -103,7 +103,44 @@ type Packet struct {
 }
 
 func (rfm *RFM9x) Init(opts Options) (err error) {
-	rfm.Options = opts
+	rfm.Options = defaultOptions
+	if opts.BandwidthHz != 0 {
+		rfm.Options.BandwidthHz = opts.BandwidthHz
+	}
+	if opts.CodingRate != 0 {
+		rfm.Options.CodingRate = opts.CodingRate
+	}
+	if opts.SpreadingFactor != 0 {
+		rfm.Options.SpreadingFactor = opts.SpreadingFactor
+	}
+	if opts.EnableCrcChecking != false {
+		rfm.Options.EnableCrcChecking = opts.EnableCrcChecking
+	}
+	if opts.TxPowerDb != 0 {
+		rfm.Options.TxPowerDb = opts.TxPowerDb
+	}
+	if opts.EnableAgc != false {
+		rfm.Options.EnableAgc = opts.EnableAgc
+	}
+	if opts.ResetPin != 0 {
+		rfm.Options.ResetPin = opts.ResetPin
+	}
+	if opts.Dio0Pin != 0 {
+		rfm.Options.Dio0Pin = opts.Dio0Pin
+	}
+	if opts.Dio1Pin != 0 {
+		rfm.Options.Dio1Pin = opts.Dio1Pin
+	}
+	if opts.Dio2Pin != 0 {
+		rfm.Options.Dio2Pin = opts.Dio2Pin
+	}
+	if opts.SpiSpeedHz != 0 {
+		rfm.Options.SpiSpeedHz = opts.SpiSpeedHz
+	}
+	if opts.TxTimeoutMs != 0 {
+		rfm.Options.TxTimeoutMs = opts.TxTimeoutMs
+	}
+
 	rfm.SpiDevice.Configure(machine.SPIConfig{
 		Frequency: rfm.Options.SpiSpeedHz,
 		Mode:      0,
