@@ -7,8 +7,9 @@ import (
 )
 
 func main() {
-	device := tinygoRFM9X.RFM9x{}
-	device.SpiDevice = *machine.SPI1
+	device := tinygoRFM9X.RFM9x{
+		SpiDevice: *machine.SPI1,
+	}
 	err := device.Init(tinygoRFM9X.Options{
 		FrequencyMhz:    868,
 		BandwidthHz:     500000,
