@@ -14,6 +14,10 @@ func main() {
 		BandwidthHz:     500000,
 		CodingRate:      5,
 		SpreadingFactor: 7,
+		ResetPin:        machine.GPIO13,
+		Dio0Pin:         machine.GPIO14,
+		Dio1Pin:         machine.GPIO15,
+		Dio2Pin:         machine.GPIO18,
 	})
 	if err != nil {
 		print("Error initializing device: %s", err)
