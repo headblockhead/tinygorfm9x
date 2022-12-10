@@ -34,6 +34,7 @@ type Options struct {
 	TxPowerDb         int
 	EnableAgc         bool
 	ResetPin          machine.Pin
+	CSPin             machine.Pin
 	Dio0Pin           machine.Pin
 	Dio1Pin           machine.Pin // Currently not used
 	Dio2Pin           machine.Pin // Currently not used
@@ -51,6 +52,7 @@ var defaultOptions = Options{
 	TxPowerDb:         23,
 	EnableAgc:         false,
 	ResetPin:          machine.NoPin,
+	CSPin:             machine.NoPin,
 	Dio0Pin:           machine.NoPin,
 	Dio1Pin:           machine.NoPin,
 	Dio2Pin:           machine.NoPin,
@@ -138,8 +140,8 @@ func (rfm *RFM9x) Init(opts Options) (err error) {
 		return err
 	}
 	rfm.Options.ResetPin.Configure(machine.PinConfig{Mode: machine.PinOutput})
-	machine.LORA_CS.Configure(machine.PinConfig{Mode: machine.PinOutput})
 	rfm.Options.ResetPin.High()
+	rfm.Options.CSPin.Configure(machine.PinConfig{Mode: machine.PinOutput})
 	rfm.Options.Dio0Pin.Configure(machine.PinConfig{Mode: machine.PinInput})
 	err = rfm.Options.Dio0Pin.SetInterrupt(machine.PinRising, rfm.Dio0InterruptHandler)
 	if err != nil {
@@ -628,12 +630,12 @@ func (rfm *RFM9x) ReadBuffer(address byte, length byte) (value []byte, err error
 
 	rxbuf := make([]byte, len(txbuf))
 
-	machine.LORA_CS.Low()
+	rfm.Options.CSPin.Low()
 	err = rfm.SpiDevice.Tx(txbuf, rxbuf)
 	if err != nil {
 		return nil, err
 	}
-	machine.LORA_CS.High()
+	rfm.Options.CSPin.High()
 	rxbuf = rxbuf[1:]
 	return rxbuf, nil
 }
@@ -648,12 +650,12 @@ func (rfm *RFM9x) WriteBuffer(address byte, buffer []byte) (err error) {
 		[]byte{byte((address & 0x7F) | 0x80)},
 		buffer,
 	}, nil)
-	machine.LORA_CS.Low()
+	rfm.Options.CSPin.Low()
 	err = rfm.SpiDevice.Tx(txbuf, nil)
 	if err != nil {
 		return err
 	}
-	machine.LORA_CS.High()
+	rfm.Options.CSPin.High()
 	return nil
 }
 

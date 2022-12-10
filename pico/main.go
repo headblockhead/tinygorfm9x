@@ -16,6 +16,7 @@ func main() {
 	err := device.Init(tinygoRFM9X.Options{
 		FrequencyMhz: 868,
 		ResetPin:     machine.LORA_RESET,
+		CSPin:        machine.LORA_CS,
 		Dio0Pin:      machine.LORA_DIO0,
 		Dio1Pin:      machine.LORA_DIO1,
 		Dio2Pin:      machine.LORA_DIO2,
