@@ -2,7 +2,7 @@ package tinygoRFM9X
 
 import (
 	"bytes"
-	"context"
+	"encoding/hex"
 	"errors"
 	"machine"
 	"math"
@@ -14,8 +14,6 @@ type RFM9x struct {
 	Options              Options
 	IsReceiving          bool
 	SpiDevice            machine.SPI
-	resetGpio            machine.Pin
-	dio0Gpio             machine.Pin
 	Dio0InterruptHandler func(machine.Pin)
 	OnReceivedPacket     func(Packet)
 }
@@ -30,8 +28,8 @@ type Options struct {
 	FrequencyMhz      int
 	PreambleLength    uint16
 	BandwidthHz       int
-	CodingRate        uint8
-	SpreadingFactor   uint8
+	CodingRate        byte
+	SpreadingFactor   byte
 	EnableCrcChecking bool
 	TxPowerDb         int
 	EnableAgc         bool
@@ -105,18 +103,10 @@ var (
 
 func (rfm *RFM9x) Init(opts Options) (err error) {
 	rfm.Options = defaultOptions
-	if opts.ResetPin != 0 {
-		return errors.New("ResetPin is required")
-	}
-	if opts.Dio0Pin != 0 {
-		return errors.New("Dio0Pin is required")
-	}
-	if opts.Dio1Pin != 0 {
-		return errors.New("Dio1Pin is required")
-	}
-	if opts.Dio2Pin != 0 {
-		return errors.New("Dio2Pin is required")
-	}
+	rfm.Options.ResetPin = opts.ResetPin
+	rfm.Options.Dio0Pin = opts.Dio0Pin
+	rfm.Options.Dio1Pin = opts.Dio1Pin
+	rfm.Options.Dio2Pin = opts.Dio2Pin
 	if opts.BandwidthHz != 0 {
 		rfm.Options.BandwidthHz = opts.BandwidthHz
 	}
@@ -141,31 +131,29 @@ func (rfm *RFM9x) Init(opts Options) (err error) {
 	if opts.TxTimeoutMs != 0 {
 		rfm.Options.TxTimeoutMs = opts.TxTimeoutMs
 	}
-	err = rfm.SpiDevice.Configure(machine.SPIConfig{
+	err = machine.SPI1.Configure(machine.SPIConfig{
 		Frequency: rfm.Options.SpiSpeedHz,
-		Mode:      0,
 	})
 	if err != nil {
 		return err
 	}
-
-	rfm.resetGpio = rfm.Options.ResetPin
-	rfm.resetGpio.Configure(machine.PinConfig{Mode: machine.PinOutput})
-	rfm.resetGpio.High()
-
-	rfm.dio0Gpio = rfm.Options.Dio0Pin
-	rfm.dio0Gpio.Configure(machine.PinConfig{Mode: machine.PinInput})
-	rfm.dio0Gpio.SetInterrupt(machine.PinRising, rfm.Dio0InterruptHandler)
-
+	rfm.Options.ResetPin.Configure(machine.PinConfig{Mode: machine.PinOutput})
+	machine.LORA_CS.Configure(machine.PinConfig{Mode: machine.PinOutput})
+	rfm.Options.ResetPin.High()
+	rfm.Options.Dio0Pin.Configure(machine.PinConfig{Mode: machine.PinInput})
+	err = rfm.Options.Dio0Pin.SetInterrupt(machine.PinRising, rfm.Dio0InterruptHandler)
+	if err != nil {
+		return err
+	}
 	err = rfm.Reset()
 	if err != nil {
 		return err
 	}
-
 	version, err := rfm.GetVersion()
 	if err != nil {
 		return err
 	}
+	print("RFM9x: Version: ", hex.EncodeToString([]byte{version}), "\r\n")
 	if version == 0 {
 		return errors.New("RFM9x module not detected")
 	} else if version != 0x12 {
@@ -177,12 +165,10 @@ func (rfm *RFM9x) Init(opts Options) (err error) {
 	if err != nil {
 		return err
 	}
-	time.Sleep(10 * time.Millisecond)
 	err = rfm.SetLoRaMode(true)
 	if err != nil {
 		return err
 	}
-
 	// Perform a sanity check
 	currentOperatingMode, err := rfm.GetOperatingMode()
 	if err != nil {
@@ -192,9 +178,16 @@ func (rfm *RFM9x) Init(opts Options) (err error) {
 	if err != nil {
 		return err
 	}
-
-	if currentOperatingMode != OP_MODES_SLEEP || !(currentLoRaMode) {
-		return errors.New("Communication error: Readback of module configuration failed")
+	if currentOperatingMode != OP_MODES_SLEEP {
+		// return errors.New("Communication error: op Readback of module configuration failed")
+		print("Communication error: op Readback of module configuration failed\r\n")
+		print("currentOperatingMode: ", currentOperatingMode, "\r\n")
+		print("OP_MODES_SLEEP: ", OP_MODES_SLEEP, "\r\n")
+	}
+	if !(currentLoRaMode) {
+		// return errors.New("Communication error: lor Readback of module configuration failed")
+		print("Communication error: lor Readback of module configuration failed\r\n")
+		print("currentLoRaMode: ", currentLoRaMode, "\r\n")
 	}
 
 	// Clear low frequency mode if frequency is high
@@ -248,10 +241,10 @@ func (rfm *RFM9x) Init(opts Options) (err error) {
 }
 
 func (rfm *RFM9x) Reset() (err error) {
-	rfm.resetGpio.Low()
+	rfm.Options.ResetPin.Low()
 	time.Sleep(100 * time.Microsecond)
-	rfm.resetGpio.High()
-	time.Sleep(5 * time.Millisecond)
+	rfm.Options.ResetPin.High()
+	time.Sleep(10 * time.Millisecond)
 	return nil
 }
 
@@ -268,8 +261,8 @@ func (rfm *RFM9x) StartRecieve() (err error) {
 	if err != nil {
 		return err
 	}
-
 	rfm.Dio0InterruptHandler = func(dio0 machine.Pin) {
+		print("dioStarts2\r\n")
 		if dio0.Get() == true {
 			flags, err := rfm.ReadBits(REGISTERS_IRQ_FLAGS, 3, 4)
 			if err != nil {
@@ -282,7 +275,6 @@ func (rfm *RFM9x) StartRecieve() (err error) {
 			if flags != 0b0101 {
 				return
 			}
-
 			numBytes, err := rfm.ReadByteFromAddress(REGISTERS_RX_NB_BYTES)
 			if err != nil {
 				return
@@ -306,6 +298,11 @@ func (rfm *RFM9x) StartRecieve() (err error) {
 			}
 			rfm.OnReceivedPacket(Packet{Payload: rxbuf, SnrDb: snr, RssiDb: rssi})
 		}
+		print("dioStopt2\r\n")
+	}
+	err = rfm.Options.Dio0Pin.SetInterrupt(machine.PinRising, rfm.Dio0InterruptHandler)
+	if err != nil {
+		return err
 	}
 	err = rfm.SetOperatingMode(OP_MODES_RXCONT)
 	return err
@@ -316,7 +313,11 @@ func (rfm *RFM9x) StopReceive() (err error) {
 	if err != nil {
 		return err
 	}
-	rfm.Dio0InterruptHandler = func(p machine.Pin) { return }
+	rfm.Dio0InterruptHandler = nil
+	err = rfm.Options.Dio0Pin.SetInterrupt(machine.PinRising, rfm.Dio0InterruptHandler)
+	if err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -339,7 +340,7 @@ func (rfm *RFM9x) Send(payload []byte) (err error) {
 	if err != nil {
 		return err
 	}
-	err = rfm.WriteByteToAddress(REGISTERS_PAYLOAD_LENGTH, uint8(len(payload)))
+	err = rfm.WriteByteToAddress(REGISTERS_PAYLOAD_LENGTH, byte(len(payload)))
 	if err != nil {
 		return err
 	}
@@ -347,18 +348,40 @@ func (rfm *RFM9x) Send(payload []byte) (err error) {
 	if err != nil {
 		return err
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(rfm.Options.TxTimeoutMs)*time.Millisecond)
+	timeout := make(chan error, 1)
+	success := make(chan bool, 1)
+	defer close(timeout)
+	defer close(success)
+	go func() {
+		time.Sleep(time.Duration(rfm.Options.TxTimeoutMs) * time.Millisecond)
+		timeout <- errors.New("timeout")
+	}()
 	rfm.Dio0InterruptHandler = func(p machine.Pin) {
-		defer cancel()
+		print("dioStarts\r\n")
 		if p.Get() == true {
 			err = rfm.WriteByteToAddress(REGISTERS_IRQ_FLAGS, 0xFF)
 			if err != nil {
 				return
 			}
-			rfm.Dio0InterruptHandler = func(p machine.Pin) { return }
+			rfm.Dio0InterruptHandler = nil
+			err = rfm.Options.Dio0Pin.SetInterrupt(machine.PinRising, rfm.Dio0InterruptHandler)
+			if err != nil {
+				return
+			}
 		}
+		success <- true
+		print("dioStops\r\n")
 	}
-	<-ctx.Done()
+	err = rfm.Options.Dio0Pin.SetInterrupt(machine.PinRising, rfm.Dio0InterruptHandler)
+	if err != nil {
+		return err
+	}
+	select {
+	case <-timeout:
+		return errors.New("timeout")
+	case <-success:
+		break
+	}
 	err = rfm.SetOperatingMode(OP_MODES_TRANSMIT)
 	return err
 }
@@ -367,11 +390,11 @@ func (rfm *RFM9x) GetVersion() (version byte, err error) {
 	return rfm.ReadByteFromAddress(REGISTERS_VERSION)
 }
 
-func (rfm *RFM9x) GetOperatingMode() (mode uint8, err error) {
+func (rfm *RFM9x) GetOperatingMode() (mode byte, err error) {
 	return rfm.ReadBits(REGISTERS_OP_MODE, 3, 0)
 }
 
-func (rfm *RFM9x) SetOperatingMode(mode uint8) (err error) {
+func (rfm *RFM9x) SetOperatingMode(mode byte) (err error) {
 	return rfm.WriteBits(REGISTERS_OP_MODE, 3, 0, mode)
 }
 
@@ -381,26 +404,26 @@ func (rfm *RFM9x) GetLoRaMode() (isLoRa bool, err error) {
 }
 
 func (rfm *RFM9x) SetLoRaMode(isLoRa bool) (err error) {
-	var loraUint8 uint8
+	var lorabyte byte
 	if isLoRa {
-		loraUint8 = 1
+		lorabyte = 1
 	} else {
-		loraUint8 = 0
+		lorabyte = 0
 	}
-	return rfm.WriteBits(REGISTERS_OP_MODE, 1, 7, loraUint8)
+	return rfm.WriteBits(REGISTERS_OP_MODE, 1, 7, lorabyte)
 }
 
 func (rfm *RFM9x) SetLowFrequencyMode(isLowFrequency bool) (err error) {
-	var LowFrequencyUint8 uint8
+	var LowFrequencybyte byte
 	if isLowFrequency {
-		LowFrequencyUint8 = 1
+		LowFrequencybyte = 1
 	} else {
-		LowFrequencyUint8 = 0
+		LowFrequencybyte = 0
 	}
-	return rfm.WriteBits(REGISTERS_OP_MODE, 1, 3, LowFrequencyUint8)
+	return rfm.WriteBits(REGISTERS_OP_MODE, 1, 3, LowFrequencybyte)
 }
 
-func (rfm *RFM9x) SetFIFOBaseAddress(txBaseAddress uint8, rxBaseAddress uint8) (err error) {
+func (rfm *RFM9x) SetFIFOBaseAddress(txBaseAddress byte, rxBaseAddress byte) (err error) {
 	err = rfm.WriteByteToAddress(REGISTERS_FIFO_TX_BASE_ADDR, txBaseAddress)
 	if err != nil {
 		return err
@@ -421,15 +444,15 @@ func (rfm *RFM9x) SetFrequencyAndBandwidth(frequencyMhz int, bandwidthHz int) (e
 	}
 	frf := int(math.Round(frequencyHz/RF95_FSTEP)) & 0xFFFFFF
 
-	err = rfm.WriteByteToAddress(REGISTERS_FRF_MSB, uint8(frf>>16))
+	err = rfm.WriteByteToAddress(REGISTERS_FRF_MSB, byte(frf>>16))
 	if err != nil {
 		return err
 	}
-	err = rfm.WriteByteToAddress(REGISTERS_FRF_MID, uint8((frf>>8)&0xFF))
+	err = rfm.WriteByteToAddress(REGISTERS_FRF_MID, byte((frf>>8)&0xFF))
 	if err != nil {
 		return err
 	}
-	err = rfm.WriteByteToAddress(REGISTERS_FRF_LSB, uint8(frf&0xFF))
+	err = rfm.WriteByteToAddress(REGISTERS_FRF_LSB, byte(frf&0xFF))
 	if err != nil {
 		return err
 	}
@@ -438,11 +461,13 @@ func (rfm *RFM9x) SetFrequencyAndBandwidth(frequencyMhz int, bandwidthHz int) (e
 	// bandwidthId will be set to the length of the array if none is found.
 	var bandwidthId int
 	for bandwidthId = 0; bandwidthId < len(BANDWIDTHS); bandwidthId++ {
+
 		if bandwidthHz <= BANDWIDTHS[bandwidthId] {
 			break
 		}
+
 	}
-	err = rfm.WriteBits(REGISTERS_MODEM_CONFIG_1, 4, 4, uint8(bandwidthId))
+	err = rfm.WriteBits(REGISTERS_MODEM_CONFIG_1, 4, 4, byte(bandwidthId))
 	if err != nil {
 		return err
 	}
@@ -454,10 +479,12 @@ func (rfm *RFM9x) SetFrequencyAndBandwidth(frequencyMhz int, bandwidthHz int) (e
 		if err != nil {
 			return err
 		}
+
 		err = rfm.WriteByteToAddress(0x2F, BW_REG_2F_OFFSETS[bandwidthId])
 		if err != nil {
 			return err
 		}
+
 		err = rfm.WriteByteToAddress(0x30, 0)
 		if err != nil {
 			return err
@@ -501,15 +528,15 @@ func (rfm *RFM9x) SetFrequencyAndBandwidth(frequencyMhz int, bandwidthHz int) (e
 }
 
 func (rfm *RFM9x) SetPreambleLength(preambleLength uint16) (err error) {
-	err = rfm.WriteByteToAddress(REGISTERS_PREAMBLE_MSB, uint8((preambleLength>>8)&0xFF))
+	err = rfm.WriteByteToAddress(REGISTERS_PREAMBLE_MSB, byte((preambleLength>>8)&0xFF))
 	if err != nil {
 		return err
 	}
-	err = rfm.WriteByteToAddress(REGISTERS_PREAMBLE_LSB, uint8(preambleLength&0xFF))
+	err = rfm.WriteByteToAddress(REGISTERS_PREAMBLE_LSB, byte(preambleLength&0xFF))
 	return err
 }
 
-func (rfm *RFM9x) SetSpreadingFactor(spreadingFactor uint8) (err error) {
+func (rfm *RFM9x) SetSpreadingFactor(spreadingFactor byte) (err error) {
 	if spreadingFactor < 6 || spreadingFactor > 12 {
 		return errors.New("Invalid spreading factor")
 	}
@@ -532,7 +559,7 @@ func (rfm *RFM9x) SetSpreadingFactor(spreadingFactor uint8) (err error) {
 	return nil
 }
 
-func (rfm *RFM9x) SetCodingRate(codingRate uint8) (err error) {
+func (rfm *RFM9x) SetCodingRate(codingRate byte) (err error) {
 	if codingRate < 5 || codingRate > 8 {
 		return errors.New("Invalid coding rate")
 	}
@@ -540,19 +567,19 @@ func (rfm *RFM9x) SetCodingRate(codingRate uint8) (err error) {
 }
 
 func (rfm *RFM9x) SetRxCrc(enableCrc bool) (err error) {
-	enableCrcUint8 := uint8(0)
+	enableCrcbyte := byte(0)
 	if enableCrc {
-		enableCrcUint8 = 1
+		enableCrcbyte = 1
 	}
-	return rfm.WriteBits(REGISTERS_MODEM_CONFIG_2, 1, 2, enableCrcUint8)
+	return rfm.WriteBits(REGISTERS_MODEM_CONFIG_2, 1, 2, enableCrcbyte)
 }
 
 func (rfm *RFM9x) SetAgc(enableAgc bool) (err error) {
-	enableAgcUint8 := uint8(0)
+	enableAgcbyte := byte(0)
 	if enableAgc {
-		enableAgcUint8 = 1
+		enableAgcbyte = 1
 	}
-	return rfm.WriteBits(REGISTERS_MODEM_CONFIG_3, 1, 2, enableAgcUint8)
+	return rfm.WriteBits(REGISTERS_MODEM_CONFIG_3, 1, 2, enableAgcbyte)
 }
 
 func (rfm *RFM9x) SetTxPower(txPowerDb int) (err error) {
@@ -578,56 +605,69 @@ func (rfm *RFM9x) SetTxPower(txPowerDb int) (err error) {
 	if err != nil {
 		return err
 	}
-	err = rfm.WriteBits(REGISTERS_PA_CONFIG, 4, 0, uint8(txPowerDb-5))
+	err = rfm.WriteBits(REGISTERS_PA_CONFIG, 4, 0, byte(txPowerDb-5))
 	if err != nil {
 		return err
 	}
 	return nil
 }
 
-func (rfm *RFM9x) ReadByteFromAddress(address uint8) (value byte, err error) {
+func (rfm *RFM9x) ReadByteFromAddress(address byte) (value byte, err error) {
 	rxbuf, err := rfm.ReadBuffer(address, 1)
 	if err != nil {
 		return 0, err
 	}
+
 	return rxbuf[0], nil
 }
 
-func (rfm *RFM9x) ReadBuffer(address uint8, length uint8) (value []uint8, err error) {
-	txbuf := make([]uint8, length+1)
-	txbuf[0] = address & 0x7F
-	rxbuf := make([]uint8, len(txbuf))
+func (rfm *RFM9x) ReadBuffer(address byte, length byte) (value []byte, err error) {
+	txbuf := make([]byte, length+1)
 
+	txbuf[0] = address & 0x7F
+
+	rxbuf := make([]byte, len(txbuf))
+
+	machine.LORA_CS.Low()
 	err = rfm.SpiDevice.Tx(txbuf, rxbuf)
 	if err != nil {
 		return nil, err
 	}
-
+	machine.LORA_CS.High()
 	rxbuf = rxbuf[1:]
 	return rxbuf, nil
 }
 
-func (rfm *RFM9x) WriteByteToAddress(address uint8, val uint8) (err error) {
-	return rfm.WriteBuffer(address, []uint8{val & 0xFF})
+func (rfm *RFM9x) WriteByteToAddress(address byte, val byte) (err error) {
+	return rfm.WriteBuffer(address, []byte{val & 0xFF})
 }
 
 // FIXME: This is a best guess, but I'm not sure if it's correct
-func (rfm *RFM9x) WriteBuffer(address uint8, buffer []uint8) (err error) {
-	txbuf := bytes.Join([][]byte{{(address & 0x7F) | 0x80}, buffer}, []byte{})
+func (rfm *RFM9x) WriteBuffer(address byte, buffer []byte) (err error) {
+	txbuf := bytes.Join([][]byte{
+		[]byte{byte((address & 0x7F) | 0x80)},
+		buffer,
+	}, nil)
+	machine.LORA_CS.Low()
 	err = rfm.SpiDevice.Tx(txbuf, nil)
 	if err != nil {
 		return err
 	}
+	machine.LORA_CS.High()
 	return nil
 }
 
-func (rfm *RFM9x) ReadBits(address, bits, offset uint8) (value uint8, err error) {
+func (rfm *RFM9x) ReadBits(address, bits, offset byte) (value byte, err error) {
+
 	mask := BITMASKS[bits-1] << offset
+
 	registerValue, err := rfm.ReadByteFromAddress(address)
+
 	return (registerValue & mask) >> offset, err
 }
 
-func (rfm *RFM9x) WriteBits(address, bits, offset, val uint8) (err error) {
+func (rfm *RFM9x) WriteBits(address, bits, offset, val byte) (err error) {
+
 	mask := BITMASKS[bits-1]
 	val &= mask
 
@@ -635,8 +675,10 @@ func (rfm *RFM9x) WriteBits(address, bits, offset, val uint8) (err error) {
 	if err != nil {
 		return err
 	}
+
 	registerValue := oldRegisterValue
 	registerValue &= ^(mask << offset)
 	registerValue |= val << offset
+
 	return rfm.WriteByteToAddress(address, registerValue)
 }
