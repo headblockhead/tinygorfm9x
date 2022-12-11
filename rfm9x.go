@@ -2,7 +2,6 @@ package tinygoRFM9X
 
 import (
 	"bytes"
-	"encoding/hex"
 	"errors"
 	"machine"
 	"math"
@@ -115,6 +114,7 @@ func (rfm *RFM9x) ClearDIO0Interrupt() (err error) {
 func (rfm *RFM9x) Init(opts Options) (err error) {
 	rfm.Options = defaultOptions
 	rfm.Options.ResetPin = opts.ResetPin
+	rfm.Options.CSPin = opts.CSPin
 	rfm.Options.Dio0Pin = opts.Dio0Pin
 	rfm.Options.Dio1Pin = opts.Dio1Pin
 	rfm.Options.Dio2Pin = opts.Dio2Pin
@@ -160,7 +160,6 @@ func (rfm *RFM9x) Init(opts Options) (err error) {
 	if err != nil {
 		return err
 	}
-	print("RFM9x: Version: ", hex.EncodeToString([]byte{version}), "\r\n")
 	if version == 0 {
 		return errors.New("RFM9x module not detected")
 	} else if version != 0x12 {
@@ -185,15 +184,10 @@ func (rfm *RFM9x) Init(opts Options) (err error) {
 		return err
 	}
 	if currentOperatingMode != OP_MODES_SLEEP {
-		// return errors.New("Communication error: op Readback of module configuration failed")
-		print("Communication error: op Readback of module configuration failed\r\n")
-		print("currentOperatingMode: ", currentOperatingMode, "\r\n")
-		print("OP_MODES_SLEEP: ", OP_MODES_SLEEP, "\r\n")
+		return errors.New("Communication error: op Readback of module configuration failed")
 	}
 	if !(currentLoRaMode) {
-		// return errors.New("Communication error: lor Readback of module configuration failed")
-		print("Communication error: lor Readback of module configuration failed\r\n")
-		print("currentLoRaMode: ", currentLoRaMode, "\r\n")
+		return errors.New("Communication error: lor Readback of module configuration failed")
 	}
 	// Clear low frequency mode if frequency is high
 	if rfm.Options.FrequencyMhz > 525 {
@@ -265,7 +259,6 @@ func (rfm *RFM9x) StartRecieve() (err error) {
 		return err
 	}
 	err = rfm.SetDIO0Interrupt(func(dio0 machine.Pin) {
-		print("dioStarts2\r\n")
 		if dio0.Get() == true {
 			flags, err := rfm.ReadBits(REGISTERS_IRQ_FLAGS, 3, 4)
 			if err != nil {
@@ -300,7 +293,6 @@ func (rfm *RFM9x) StartRecieve() (err error) {
 			}
 			rfm.OnReceivedPacket(Packet{Payload: rxbuf, SnrDb: snr, RssiDb: rssi})
 		}
-		print("dioStopt2\r\n")
 	})
 	if err != nil {
 		return err
@@ -357,7 +349,6 @@ func (rfm *RFM9x) Send(payload []byte) (err error) {
 		timeout <- errors.New("timeout")
 	}()
 	err = rfm.SetDIO0Interrupt(func(p machine.Pin) {
-		print("dioStarts\r\n")
 		if p.Get() == true {
 			err = rfm.WriteByteToAddress(REGISTERS_IRQ_FLAGS, 0xFF)
 			if err != nil {
@@ -369,18 +360,17 @@ func (rfm *RFM9x) Send(payload []byte) (err error) {
 			}
 		}
 		success <- true
-		print("dioStops\r\n")
 	})
 	if err != nil {
 		return err
 	}
+	err = rfm.SetOperatingMode(OP_MODES_TRANSMIT)
 	select {
 	case <-timeout:
 		return errors.New("timeout")
 	case <-success:
 		break
 	}
-	err = rfm.SetOperatingMode(OP_MODES_TRANSMIT)
 	return err
 }
 
