@@ -1,3 +1,3 @@
-module github.com/headblockhead/tinygoRFM9X
+module github.com/headblockhead/tinygorfm9x
 
 go 1.19

@@ -4,16 +4,16 @@ import (
 	"machine"
 	"time"
 
-	"github.com/headblockhead/tinygoRFM9X"
+	"github.com/headblockhead/tinygorfm9x"
 )
 
 func main() {
 	time.Sleep(1 * time.Second)
-	device := tinygoRFM9X.RFM9x{
+	device := tinygorfm9x.RFM9x{
 		SpiDevice: *machine.SPI1,
 	}
 	print("Initializing device\r\n")
-	err := device.Init(tinygoRFM9X.Options{
+	err := device.Init(tinygorfm9x.Options{
 		FrequencyMhz:      868,
 		ResetPin:          machine.LORA_RESET,
 		CSPin:             machine.LORA_CS,
@@ -26,7 +26,7 @@ func main() {
 		print("Error initializing device: ", err, "\r\n")
 	}
 	print("Setting up device\r\n")
-	device.OnReceivedPacket = func(packet tinygoRFM9X.Packet) {
+	device.OnReceivedPacket = func(packet tinygorfm9x.Packet) {
 		print("Received packet: ", string(packet.Payload), "\r\n")
 		print("RSSI: ", packet.RSSIDb, "\r\n")
 		print("SNR: ", packet.SNRDb, "\r\n")
