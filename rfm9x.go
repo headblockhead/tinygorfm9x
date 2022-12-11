@@ -10,12 +10,11 @@ import (
 )
 
 type RFM9x struct {
-	Debug                bool
-	Options              Options
-	IsReceiving          bool
-	SpiDevice            machine.SPI
-	Dio0InterruptHandler func(machine.Pin)
-	OnReceivedPacket     func(Packet)
+	Debug            bool
+	Options          Options
+	IsReceiving      bool
+	SpiDevice        machine.SPI
+	OnReceivedPacket func(Packet)
 }
 
 type Packet struct {
@@ -103,6 +102,16 @@ var (
 	BITMASKS          = []byte{0b00000001, 0b00000011, 0b00000111, 0b00001111, 0b00011111, 0b00111111, 0b01111111}
 )
 
+func (rfm *RFM9x) SetDIO0Interrupt(interrupt func(machine.Pin)) (err error) {
+	err = rfm.Options.Dio0Pin.SetInterrupt(machine.PinRising, interrupt)
+	return err
+}
+
+func (rfm *RFM9x) ClearDIO0Interrupt() (err error) {
+	err = rfm.Options.Dio0Pin.SetInterrupt(machine.PinRising, nil)
+	return err
+}
+
 func (rfm *RFM9x) Init(opts Options) (err error) {
 	rfm.Options = defaultOptions
 	rfm.Options.ResetPin = opts.ResetPin
@@ -143,10 +152,6 @@ func (rfm *RFM9x) Init(opts Options) (err error) {
 	rfm.Options.ResetPin.High()
 	rfm.Options.CSPin.Configure(machine.PinConfig{Mode: machine.PinOutput})
 	rfm.Options.Dio0Pin.Configure(machine.PinConfig{Mode: machine.PinInput})
-	err = rfm.Options.Dio0Pin.SetInterrupt(machine.PinRising, rfm.Dio0InterruptHandler)
-	if err != nil {
-		return err
-	}
 	err = rfm.Reset()
 	if err != nil {
 		return err
@@ -259,7 +264,7 @@ func (rfm *RFM9x) StartRecieve() (err error) {
 	if err != nil {
 		return err
 	}
-	rfm.Dio0InterruptHandler = func(dio0 machine.Pin) {
+	err = rfm.SetDIO0Interrupt(func(dio0 machine.Pin) {
 		print("dioStarts2\r\n")
 		if dio0.Get() == true {
 			flags, err := rfm.ReadBits(REGISTERS_IRQ_FLAGS, 3, 4)
@@ -296,8 +301,7 @@ func (rfm *RFM9x) StartRecieve() (err error) {
 			rfm.OnReceivedPacket(Packet{Payload: rxbuf, SnrDb: snr, RssiDb: rssi})
 		}
 		print("dioStopt2\r\n")
-	}
-	err = rfm.Options.Dio0Pin.SetInterrupt(machine.PinRising, rfm.Dio0InterruptHandler)
+	})
 	if err != nil {
 		return err
 	}
@@ -310,8 +314,7 @@ func (rfm *RFM9x) StopReceive() (err error) {
 	if err != nil {
 		return err
 	}
-	rfm.Dio0InterruptHandler = nil
-	err = rfm.Options.Dio0Pin.SetInterrupt(machine.PinRising, rfm.Dio0InterruptHandler)
+	err = rfm.ClearDIO0Interrupt()
 	if err != nil {
 		return err
 	}
@@ -353,23 +356,21 @@ func (rfm *RFM9x) Send(payload []byte) (err error) {
 		time.Sleep(time.Duration(rfm.Options.TxTimeoutMs) * time.Millisecond)
 		timeout <- errors.New("timeout")
 	}()
-	rfm.Dio0InterruptHandler = func(p machine.Pin) {
+	err = rfm.SetDIO0Interrupt(func(p machine.Pin) {
 		print("dioStarts\r\n")
 		if p.Get() == true {
 			err = rfm.WriteByteToAddress(REGISTERS_IRQ_FLAGS, 0xFF)
 			if err != nil {
 				return
 			}
-			rfm.Dio0InterruptHandler = nil
-			err = rfm.Options.Dio0Pin.SetInterrupt(machine.PinRising, rfm.Dio0InterruptHandler)
+			err = rfm.ClearDIO0Interrupt()
 			if err != nil {
 				return
 			}
 		}
 		success <- true
 		print("dioStops\r\n")
-	}
-	err = rfm.Options.Dio0Pin.SetInterrupt(machine.PinRising, rfm.Dio0InterruptHandler)
+	})
 	if err != nil {
 		return err
 	}
@@ -624,10 +625,9 @@ func (rfm *RFM9x) WriteByteToAddress(address byte, val byte) (err error) {
 	return rfm.WriteBuffer(address, []byte{val & 0xFF})
 }
 
-// FIXME: This is a best guess, but I'm not sure if it's correct
 func (rfm *RFM9x) WriteBuffer(address byte, buffer []byte) (err error) {
 	txbuf := bytes.Join([][]byte{
-		[]byte{byte((address & 0x7F) | 0x80)},
+		{byte((address & 0x7F) | 0x80)},
 		buffer,
 	}, nil)
 	rfm.Options.CSPin.Low()
