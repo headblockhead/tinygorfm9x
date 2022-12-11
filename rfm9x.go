@@ -1,4 +1,4 @@
-package tinygoRFM9X
+package tinygorfm9x
 
 import (
 	"bytes"
