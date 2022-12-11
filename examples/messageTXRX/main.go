@@ -28,17 +28,13 @@ func main() {
 	print("Setting up device\r\n")
 	device.OnReceivedPacket = func(packet tinygoRFM9X.Packet) {
 		print("Received packet: ", string(packet.Payload), "\r\n")
-		print("RSSI: ", packet.RssiDb, "\r\n")
-		print("SNR: ", packet.SnrDb, "\r\n")
+		print("RSSI: ", packet.RSSIDb, "\r\n")
+		print("SNR: ", packet.SNRDb, "\r\n")
 		print("Packet bytes: \r\n")
 		for _, b := range packet.Payload {
 			print(b, " ")
 		}
 		print("\r\n")
-		err = device.StartRecieve()
-		if err != nil {
-			print("Error restarting recieve: ", err, "\r\n")
-		}
 	}
 	print("Sending packet\r\n")
 	err = device.Send([]byte("Hello World!"))
