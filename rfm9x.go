@@ -12,15 +12,15 @@ import (
 type RFM9x struct {
 	// Options is an instance of the Options type
 	Options Options
-	// SpiDevice is the SPI device used to communicate with the RFM9X
-	SpiDevice machine.SPI
-	// OnReceivedPacket is a function set by the user that is executed when a packet is recieved
+	// SPIDevice is the SPI device used to communicate with the RFM9X
+	SPIDevice machine.SPI
+	// OnReceivedPacket is a function set by the user that is executed when a packet is received
 	OnReceivedPacket func(Packet)
 }
 
 // Packet is a packet received from the radio.
 type Packet struct {
-	// Payload is the bytes recieved by the radio
+	// Payload is the bytes received by the radio
 	Payload []byte
 	// RSSIDb is the Received Signal Strength Indication of the Packet
 	RSSIDb byte
@@ -30,41 +30,41 @@ type Packet struct {
 
 // Options are the options for the radio.
 type Options struct {
-	FrequencyMhz      int
+	FrequencyMHz      int
 	PreambleLength    uint16
 	BandwidthHz       int
 	CodingRate        byte
 	SpreadingFactor   byte
-	EnableCrcChecking bool
+	EnableCRCChecking bool
 	TxPowerDb         int
-	EnableAgc         bool
+	EnableAGC         bool
 	ResetPin          machine.Pin
 	CSPin             machine.Pin
-	Dio0Pin           machine.Pin
-	Dio1Pin           machine.Pin // Currently not used
-	Dio2Pin           machine.Pin // Currently not used
-	SpiSpeedHz        uint32
+	DIO0Pin           machine.Pin
+	DIO1Pin           machine.Pin // Currently not used
+	DIO2Pin           machine.Pin // Currently not used
+	SPISpeedHz        uint32
 	TxTimeoutMs       int
 }
 
 // defaultOptions are the default options for the radio.
-// FrequencyMhz is set to 915 by default, as that is the frequency used in the US.
+// FrequencyMHz is set to 915 by default, as that is the frequency used in the US.
 // The different Pin options are also set to NoPin, as they are set by the user in the Init() function.
 var defaultOptions = Options{
-	FrequencyMhz:      915,
+	FrequencyMHz:      915,
 	PreambleLength:    8,
 	BandwidthHz:       500000,
 	CodingRate:        5,
 	SpreadingFactor:   7,
-	EnableCrcChecking: false,
+	EnableCRCChecking: false,
 	TxPowerDb:         23,
-	EnableAgc:         false,
+	EnableAGC:         false,
 	ResetPin:          machine.NoPin,
 	CSPin:             machine.NoPin,
-	Dio0Pin:           machine.NoPin,
-	Dio1Pin:           machine.NoPin,
-	Dio2Pin:           machine.NoPin,
-	SpiSpeedHz:        100000,
+	DIO0Pin:           machine.NoPin,
+	DIO1Pin:           machine.NoPin,
+	DIO2Pin:           machine.NoPin,
+	SPISpeedHz:        100000,
 	TxTimeoutMs:       2000,
 }
 
@@ -113,14 +113,12 @@ var (
 
 // SetDIO0Interrupt sets the function to be run when the DIO0 pin is changed.
 func (rfm *RFM9x) SetDIO0Interrupt(interrupt func(machine.Pin)) (err error) {
-	err = rfm.Options.Dio0Pin.SetInterrupt(machine.PinRising, interrupt)
-	return err
+	return rfm.Options.DIO0Pin.SetInterrupt(machine.PinRising, interrupt)
 }
 
 // ClearDIO0Interrupt deletes the function set to be run when the DIO0 pin is changed.
 func (rfm *RFM9x) ClearDIO0Interrupt() (err error) {
-	err = rfm.Options.Dio0Pin.SetInterrupt(machine.PinRising, nil)
-	return err
+	return rfm.Options.DIO0Pin.SetInterrupt(machine.PinRising, nil)
 }
 
 // Init sets up the RFM9x with the options provided, and uses the defaultOptions for fields not specified by the options provided.
@@ -128,9 +126,9 @@ func (rfm *RFM9x) Init(opts Options) (err error) {
 	rfm.Options = defaultOptions
 	rfm.Options.ResetPin = opts.ResetPin
 	rfm.Options.CSPin = opts.CSPin
-	rfm.Options.Dio0Pin = opts.Dio0Pin
-	rfm.Options.Dio1Pin = opts.Dio1Pin
-	rfm.Options.Dio2Pin = opts.Dio2Pin
+	rfm.Options.DIO0Pin = opts.DIO0Pin
+	rfm.Options.DIO1Pin = opts.DIO1Pin
+	rfm.Options.DIO2Pin = opts.DIO2Pin
 	if opts.BandwidthHz != 0 {
 		rfm.Options.BandwidthHz = opts.BandwidthHz
 	}
@@ -140,23 +138,23 @@ func (rfm *RFM9x) Init(opts Options) (err error) {
 	if opts.SpreadingFactor != 0 {
 		rfm.Options.SpreadingFactor = opts.SpreadingFactor
 	}
-	if opts.EnableCrcChecking != false {
-		rfm.Options.EnableCrcChecking = opts.EnableCrcChecking
+	if opts.EnableCRCChecking != false {
+		rfm.Options.EnableCRCChecking = opts.EnableCRCChecking
 	}
 	if opts.TxPowerDb != 0 {
 		rfm.Options.TxPowerDb = opts.TxPowerDb
 	}
-	if opts.EnableAgc != false {
-		rfm.Options.EnableAgc = opts.EnableAgc
+	if opts.EnableAGC != false {
+		rfm.Options.EnableAGC = opts.EnableAGC
 	}
-	if opts.SpiSpeedHz != 0 {
-		rfm.Options.SpiSpeedHz = opts.SpiSpeedHz
+	if opts.SPISpeedHz != 0 {
+		rfm.Options.SPISpeedHz = opts.SPISpeedHz
 	}
 	if opts.TxTimeoutMs != 0 {
 		rfm.Options.TxTimeoutMs = opts.TxTimeoutMs
 	}
 	err = machine.SPI1.Configure(machine.SPIConfig{
-		Frequency: rfm.Options.SpiSpeedHz,
+		Frequency: rfm.Options.SPISpeedHz,
 	})
 	if err != nil {
 		return err
@@ -164,7 +162,7 @@ func (rfm *RFM9x) Init(opts Options) (err error) {
 	rfm.Options.ResetPin.Configure(machine.PinConfig{Mode: machine.PinOutput})
 	rfm.Options.ResetPin.High()
 	rfm.Options.CSPin.Configure(machine.PinConfig{Mode: machine.PinOutput})
-	rfm.Options.Dio0Pin.Configure(machine.PinConfig{Mode: machine.PinInput})
+	rfm.Options.DIO0Pin.Configure(machine.PinConfig{Mode: machine.PinInput})
 	err = rfm.Reset()
 	if err != nil {
 		return err
@@ -197,13 +195,13 @@ func (rfm *RFM9x) Init(opts Options) (err error) {
 		return err
 	}
 	if currentOperatingMode != OP_MODES_SLEEP {
-		return errors.New("Communication error: op Readback of module configuration failed")
+		return errors.New("communication error: op Readback of module configuration failed")
 	}
 	if !(currentLoRaMode) {
-		return errors.New("Communication error: lor Readback of module configuration failed")
+		return errors.New("communication error: lor Readback of module configuration failed")
 	}
 	// Clear low frequency mode if frequency is high
-	if rfm.Options.FrequencyMhz > 525 {
+	if rfm.Options.FrequencyMHz > 525 {
 		err = rfm.SetLowFrequencyMode(false)
 		if err != nil {
 			return err
@@ -223,7 +221,7 @@ func (rfm *RFM9x) Init(opts Options) (err error) {
 	if err != nil {
 		return err
 	}
-	err = rfm.SetFrequencyAndBandwidth(rfm.Options.FrequencyMhz, rfm.Options.BandwidthHz)
+	err = rfm.SetFrequencyAndBandwidth(rfm.Options.FrequencyMHz, rfm.Options.BandwidthHz)
 	if err != nil {
 		return err
 	}
@@ -235,11 +233,11 @@ func (rfm *RFM9x) Init(opts Options) (err error) {
 	if err != nil {
 		return err
 	}
-	err = rfm.SetRxCrc(rfm.Options.EnableCrcChecking)
+	err = rfm.SetRxCRC(rfm.Options.EnableCRCChecking)
 	if err != nil {
 		return err
 	}
-	err = rfm.SetAgc(rfm.Options.EnableAgc)
+	err = rfm.SetAGC(rfm.Options.EnableAGC)
 	if err != nil {
 		return err
 	}
@@ -259,8 +257,8 @@ func (rfm *RFM9x) Reset() (err error) {
 	return nil
 }
 
-// StartRecieve tells the RFM9X to start waiting for a packet. When it recieves a packet, it will run OnReceivedPacket().
-func (rfm *RFM9x) StartRecieve() (err error) {
+// StartReceive tells the RFM9X to start waiting for a packet. When it receives a packet, it will run OnReceivedPacket().
+func (rfm *RFM9x) StartReceive() (err error) {
 	err = rfm.StopReceive()
 	if err != nil {
 		return err
@@ -312,8 +310,7 @@ func (rfm *RFM9x) StartRecieve() (err error) {
 	if err != nil {
 		return err
 	}
-	err = rfm.SetOperatingMode(OP_MODES_RXCONT)
-	return err
+	return rfm.SetOperatingMode(OP_MODES_RXCONT)
 }
 
 // StopReceive puts	the device into standby mode and stops waiting for packets.
@@ -322,20 +319,16 @@ func (rfm *RFM9x) StopReceive() (err error) {
 	if err != nil {
 		return err
 	}
-	err = rfm.ClearDIO0Interrupt()
-	if err != nil {
-		return err
-	}
-	return nil
+	return rfm.ClearDIO0Interrupt()
 }
 
-// Send sends a payload using the radio.
+// Send a payload using the radio.
 func (rfm *RFM9x) Send(payload []byte) (err error) {
 	if len(payload) < 1 {
-		return errors.New("Empty payload supplied")
+		return errors.New("empty payload supplied")
 	}
 	if len(payload) > 255 {
-		return errors.New("Payload too long")
+		return errors.New("payload too long")
 	}
 	err = rfm.StopReceive()
 	if err != nil {
@@ -414,24 +407,19 @@ func (rfm *RFM9x) GetLoRaMode() (isLoRa bool, err error) {
 
 // SetLoRaMode sets the current LoRa mode of the device.
 func (rfm *RFM9x) SetLoRaMode(isLoRa bool) (err error) {
-	var lorabyte byte
-	if isLoRa {
-		lorabyte = 1
-	} else {
-		lorabyte = 0
-	}
-	return rfm.WriteBits(REGISTERS_OP_MODE, 1, 7, lorabyte)
+	return rfm.WriteBits(REGISTERS_OP_MODE, 1, 7, boolToByte(isLoRa))
 }
 
 // SetLowFrequencyMode sets the low frequency mode of the device.
 func (rfm *RFM9x) SetLowFrequencyMode(isLowFrequency bool) (err error) {
-	var LowFrequencybyte byte
-	if isLowFrequency {
-		LowFrequencybyte = 1
-	} else {
-		LowFrequencybyte = 0
+	return rfm.WriteBits(REGISTERS_OP_MODE, 1, 3, boolToByte(isLowFrequency))
+}
+
+func boolToByte(b bool) byte {
+	if b {
+		return 1
 	}
-	return rfm.WriteBits(REGISTERS_OP_MODE, 1, 3, LowFrequencybyte)
+	return 0
 }
 
 // SetFIFOBaseAddress sets the TX and RX base address of the device.
@@ -440,18 +428,14 @@ func (rfm *RFM9x) SetFIFOBaseAddress(txBaseAddress byte, rxBaseAddress byte) (er
 	if err != nil {
 		return err
 	}
-	err = rfm.WriteByteToAddress(REGISTERS_FIFO_RX_BASE_ADDR, rxBaseAddress)
-	if err != nil {
-		return err
-	}
-	return nil
+	return rfm.WriteByteToAddress(REGISTERS_FIFO_RX_BASE_ADDR, rxBaseAddress)
 }
 
-// SetFrequencyAndBandwidth sets the frequency (in mhz) and the bandwidth (in hz) of the device.
-func (rfm *RFM9x) SetFrequencyAndBandwidth(frequencyMhz int, bandwidthHz int) (err error) {
+// SetFrequencyAndBandwidth sets the frequency (in MHz) and the bandwidth (in Hz) of the device.
+func (rfm *RFM9x) SetFrequencyAndBandwidth(frequencyMHz int, bandwidthHz int) (err error) {
 	// Offset frequency value to prevent spurious reception
 	// (Semtech SX1276 errata note 2.3)
-	frequencyHz := float64(frequencyMhz * 1000000)
+	frequencyHz := float64(frequencyMHz * 1000000)
 	if bandwidthHz < 62500 {
 		frequencyHz += float64(bandwidthHz)
 	}
@@ -469,25 +453,25 @@ func (rfm *RFM9x) SetFrequencyAndBandwidth(frequencyMhz int, bandwidthHz int) (e
 		return err
 	}
 	// Find the lowest bandwidth setting that is greater than or equal to the desired bandwidth.
-	// bandwidthId will be set to the length of the array if none is found.
-	var bandwidthId int
-	for bandwidthId = 0; bandwidthId < len(BANDWIDTHS); bandwidthId++ {
-		if bandwidthHz <= BANDWIDTHS[bandwidthId] {
+	// bandwidthID will be set to the length of the array if none is found.
+	var bandwidthID int
+	for bandwidthID = 0; bandwidthID < len(BANDWIDTHS); bandwidthID++ {
+		if bandwidthHz <= BANDWIDTHS[bandwidthID] {
 			break
 		}
 	}
-	err = rfm.WriteBits(REGISTERS_MODEM_CONFIG_1, 4, 4, byte(bandwidthId))
+	err = rfm.WriteBits(REGISTERS_MODEM_CONFIG_1, 4, 4, byte(bandwidthID))
 	if err != nil {
 		return err
 	}
 	// Receiver Spurious Reception of LoRa Signal
 	// (Semtech SX1276 errata note 2.3)
-	if bandwidthId < len(BANDWIDTHS) {
+	if bandwidthID < len(BANDWIDTHS) {
 		err = rfm.WriteBits(0x31, 1, 7, 0)
 		if err != nil {
 			return err
 		}
-		err = rfm.WriteByteToAddress(0x2F, BW_REG_2F_OFFSETS[bandwidthId])
+		err = rfm.WriteByteToAddress(0x2F, BW_REG_2F_OFFSETS[bandwidthID])
 		if err != nil {
 			return err
 		}
@@ -504,8 +488,8 @@ func (rfm *RFM9x) SetFrequencyAndBandwidth(frequencyMhz int, bandwidthHz int) (e
 
 	// Sensitivity Optimization with 500 kHz Bandwidth
 	// (Semtech SX1276 errata note 2.1)
-	if bandwidthId == len(BANDWIDTHS) {
-		if frequencyMhz >= 862 {
+	if bandwidthID == len(BANDWIDTHS) {
+		if frequencyMHz >= 862 {
 			err = rfm.WriteByteToAddress(0x36, 0x02)
 			if err != nil {
 				return err
@@ -514,7 +498,7 @@ func (rfm *RFM9x) SetFrequencyAndBandwidth(frequencyMhz int, bandwidthHz int) (e
 			if err != nil {
 				return err
 			}
-		} else if frequencyMhz <= 525 {
+		} else if frequencyMHz <= 525 {
 			err = rfm.WriteByteToAddress(0x36, 0x02)
 			if err != nil {
 				return err
@@ -539,20 +523,19 @@ func (rfm *RFM9x) SetPreambleLength(preambleLength uint16) (err error) {
 	if err != nil {
 		return err
 	}
-	err = rfm.WriteByteToAddress(REGISTERS_PREAMBLE_LSB, byte(preambleLength&0xFF))
-	return err
+	return rfm.WriteByteToAddress(REGISTERS_PREAMBLE_LSB, byte(preambleLength&0xFF))
 }
 
 // SetSpreadingFactor sets the spreading factor of the device.
-func (rfm *RFM9x) SetSpreadingFactor(spreadingFactor byte) (err error) {
-	if spreadingFactor < 6 || spreadingFactor > 12 {
-		return errors.New("Invalid spreading factor")
+func (rfm *RFM9x) SetSpreadingFactor(sf byte) (err error) {
+	if sf < 6 || sf > 12 {
+		return errors.New("invalid spreading factor")
 	}
-	err = rfm.WriteBits(REGISTERS_MODEM_CONFIG_2, 4, 4, spreadingFactor)
+	err = rfm.WriteBits(REGISTERS_MODEM_CONFIG_2, 4, 4, sf)
 	if err != nil {
 		return err
 	}
-	if spreadingFactor == 6 {
+	if sf == 6 {
 		err = rfm.WriteBits(0x31, 3, 0, 0b101)
 		if err != nil {
 			return err
@@ -568,34 +551,26 @@ func (rfm *RFM9x) SetSpreadingFactor(spreadingFactor byte) (err error) {
 // SetCodingRate sets the coding rate of the device.
 func (rfm *RFM9x) SetCodingRate(codingRate byte) (err error) {
 	if codingRate < 5 || codingRate > 8 {
-		return errors.New("Invalid coding rate")
+		return errors.New("invalid coding rate")
 	}
 	return rfm.WriteBits(REGISTERS_MODEM_CONFIG_1, 3, 1, codingRate-4)
 }
 
-// SetRxCrc enables or disables the CRC checking functionality of the device.
-func (rfm *RFM9x) SetRxCrc(enableCrc bool) (err error) {
-	enableCrcbyte := byte(0)
-	if enableCrc {
-		enableCrcbyte = 1
-	}
-	return rfm.WriteBits(REGISTERS_MODEM_CONFIG_2, 1, 2, enableCrcbyte)
+// SetRxCRC enables or disables the CRC checking functionality of the device.
+func (rfm *RFM9x) SetRxCRC(enableCRC bool) (err error) {
+	return rfm.WriteBits(REGISTERS_MODEM_CONFIG_2, 1, 2, boolToByte(enableCRC))
 }
 
-// SetAgc enables or disables the Automatic Gain Control of the device.
-func (rfm *RFM9x) SetAgc(enableAgc bool) (err error) {
-	enableAgcbyte := byte(0)
-	if enableAgc {
-		enableAgcbyte = 1
-	}
-	return rfm.WriteBits(REGISTERS_MODEM_CONFIG_3, 1, 2, enableAgcbyte)
+// SetAGC enables or disables the Automatic Gain Control of the device.
+func (rfm *RFM9x) SetAGC(enableAGC bool) (err error) {
+	return rfm.WriteBits(REGISTERS_MODEM_CONFIG_3, 1, 2, boolToByte(enableAGC))
 }
 
 // SetTxPower sets the TX power of the device in db.
 func (rfm *RFM9x) SetTxPower(txPowerDb int) (err error) {
 	// Currently only high power mode (PA_BOOST) is supported
 	if txPowerDb < 5 || txPowerDb > 23 {
-		return errors.New("Invalid TX power")
+		return errors.New("invalid TX power")
 	}
 	if txPowerDb > 20 {
 		err = rfm.WriteByteToAddress(REGISTERS_PA_DAC, 0x87)
@@ -613,11 +588,7 @@ func (rfm *RFM9x) SetTxPower(txPowerDb int) (err error) {
 	if err != nil {
 		return err
 	}
-	err = rfm.WriteBits(REGISTERS_PA_CONFIG, 4, 0, byte(txPowerDb-5))
-	if err != nil {
-		return err
-	}
-	return nil
+	return rfm.WriteBits(REGISTERS_PA_CONFIG, 4, 0, byte(txPowerDb-5))
 }
 
 // ReadByteFromAddress reads a single byte from the device at the address provided.
@@ -635,7 +606,7 @@ func (rfm *RFM9x) ReadBuffer(address byte, length byte) (value []byte, err error
 	txbuf[0] = address & 0x7F
 	rxbuf := make([]byte, len(txbuf))
 	rfm.Options.CSPin.Low()
-	err = rfm.SpiDevice.Tx(txbuf, rxbuf)
+	err = rfm.SPIDevice.Tx(txbuf, rxbuf)
 	if err != nil {
 		return nil, err
 	}
@@ -656,7 +627,7 @@ func (rfm *RFM9x) WriteBuffer(address byte, buffer []byte) (err error) {
 		buffer,
 	}, nil)
 	rfm.Options.CSPin.Low()
-	err = rfm.SpiDevice.Tx(txbuf, nil)
+	err = rfm.SPIDevice.Tx(txbuf, nil)
 	if err != nil {
 		return err
 	}
