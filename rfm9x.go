@@ -68,6 +68,7 @@ var defaultOptions = Options{
 	TxTimeoutMs:       2000,
 }
 
+// Define constants.
 const (
 	REGISTERS_FIFO              = 0x00
 	REGISTERS_OP_MODE           = 0x01
@@ -105,10 +106,25 @@ const (
 	RF95_FSTEP                  = RF95_FXOSC / 524288
 )
 
+// Define lists and bitmasks.
 var (
 	BANDWIDTHS        = []int{7800, 10400, 15600, 20800, 31250, 41700, 62500, 125000, 250000}
 	BW_REG_2F_OFFSETS = []byte{0x48, 0x44, 0x44, 0x44, 0x44, 0x44, 0x40, 0x40, 0x40}
 	BITMASKS          = []byte{0b00000001, 0b00000011, 0b00000111, 0b00001111, 0b00011111, 0b00111111, 0b01111111}
+)
+
+// Define errors.
+var (
+	ErrRFM9xNotDetected               = errors.New("RFM9x module not detected")
+	ErrRFM9xNotSupported              = errors.New("RFM9x version not supported")
+	ErrRFM9xOPModeReadbackIncorrect   = errors.New("communication error: Readback of operating mode configuration failed")
+	ErrRFM9xLoRaModeReadbackIncorrect = errors.New("communication error: Readback of LoRa mode configuration failed")
+	ErrSendPayloadEmpty               = errors.New("empty payload supplied")
+	ErrSendPayloadTooBig              = errors.New("payload too long")
+	ErrSendTimeOut                    = errors.New("timeout while sending")
+	ErrInvalidSpreadingFactor         = errors.New("invalid spreading factor")
+	ErrInvalidCodingRate              = errors.New("invalid coding rate")
+	ErrInvalidTXPower                 = errors.New("invalid TX power")
 )
 
 // SetDIO0Interrupt sets the function to be run when the DIO0 pin is changed.
@@ -172,9 +188,9 @@ func (rfm *RFM9x) Init(opts Options) (err error) {
 		return err
 	}
 	if version == 0 {
-		return errors.New("RFM9x module not detected")
+		return ErrRFM9xNotDetected
 	} else if version != 0x12 {
-		return errors.New("RFM9x version not supported")
+		return ErrRFM9xNotSupported
 	}
 	// Switch to sleep mode and set LoRa mode (can only be done in sleep mode)
 	err = rfm.SetOperatingMode(OP_MODES_SLEEP)
@@ -195,10 +211,10 @@ func (rfm *RFM9x) Init(opts Options) (err error) {
 		return err
 	}
 	if currentOperatingMode != OP_MODES_SLEEP {
-		return errors.New("communication error: op Readback of module configuration failed")
+		return ErrRFM9xOPModeReadbackIncorrect
 	}
 	if !(currentLoRaMode) {
-		return errors.New("communication error: lor Readback of module configuration failed")
+		return ErrRFM9xLoRaModeReadbackIncorrect
 	}
 	// Clear low frequency mode if frequency is high
 	if rfm.Options.FrequencyMHz > 525 {
@@ -325,10 +341,10 @@ func (rfm *RFM9x) StopReceive() (err error) {
 // Send a payload using the radio.
 func (rfm *RFM9x) Send(payload []byte) (err error) {
 	if len(payload) < 1 {
-		return errors.New("empty payload supplied")
+		return ErrSendPayloadEmpty
 	}
 	if len(payload) > 255 {
-		return errors.New("payload too long")
+		return ErrSendPayloadTooBig
 	}
 	err = rfm.StopReceive()
 	if err != nil {
@@ -356,7 +372,7 @@ func (rfm *RFM9x) Send(payload []byte) (err error) {
 	defer close(success)
 	go func() {
 		time.Sleep(time.Duration(rfm.Options.TxTimeoutMs) * time.Millisecond)
-		timeout <- errors.New("timeout")
+		timeout <- ErrSendTimeOut
 	}()
 	err = rfm.SetDIO0Interrupt(func(p machine.Pin) {
 		if p.Get() == true {
@@ -376,8 +392,8 @@ func (rfm *RFM9x) Send(payload []byte) (err error) {
 	}
 	err = rfm.SetOperatingMode(OP_MODES_TRANSMIT)
 	select {
-	case <-timeout:
-		return errors.New("timeout")
+	case err := <-timeout:
+		return err
 	case <-success:
 		break
 	}
@@ -529,7 +545,7 @@ func (rfm *RFM9x) SetPreambleLength(preambleLength uint16) (err error) {
 // SetSpreadingFactor sets the spreading factor of the device.
 func (rfm *RFM9x) SetSpreadingFactor(sf byte) (err error) {
 	if sf < 6 || sf > 12 {
-		return errors.New("invalid spreading factor")
+		return ErrInvalidSpreadingFactor
 	}
 	err = rfm.WriteBits(REGISTERS_MODEM_CONFIG_2, 4, 4, sf)
 	if err != nil {
@@ -551,7 +567,7 @@ func (rfm *RFM9x) SetSpreadingFactor(sf byte) (err error) {
 // SetCodingRate sets the coding rate of the device.
 func (rfm *RFM9x) SetCodingRate(codingRate byte) (err error) {
 	if codingRate < 5 || codingRate > 8 {
-		return errors.New("invalid coding rate")
+		return ErrInvalidCodingRate
 	}
 	return rfm.WriteBits(REGISTERS_MODEM_CONFIG_1, 3, 1, codingRate-4)
 }
@@ -570,7 +586,7 @@ func (rfm *RFM9x) SetAGC(enableAGC bool) (err error) {
 func (rfm *RFM9x) SetTxPower(txPowerDb int) (err error) {
 	// Currently only high power mode (PA_BOOST) is supported
 	if txPowerDb < 5 || txPowerDb > 23 {
-		return errors.New("invalid TX power")
+		return ErrInvalidTXPower
 	}
 	if txPowerDb > 20 {
 		err = rfm.WriteByteToAddress(REGISTERS_PA_DAC, 0x87)
