@@ -340,6 +340,7 @@ func (rfm *RFM9x) StopReceive() (err error) {
 
 // Send a payload using the radio.
 func (rfm *RFM9x) Send(payload []byte) (err error) {
+	println("Sending", payload)
 	if len(payload) < 1 {
 		return ErrSendPayloadEmpty
 	}
@@ -366,14 +367,8 @@ func (rfm *RFM9x) Send(payload []byte) (err error) {
 	if err != nil {
 		return err
 	}
-	timeout := make(chan error, 1)
 	success := make(chan bool, 1)
-	defer close(timeout)
 	defer close(success)
-	go func() {
-		time.Sleep(time.Duration(rfm.Options.TxTimeoutMs) * time.Millisecond)
-		timeout <- ErrSendTimeOut
-	}()
 	err = rfm.SetDIO0Interrupt(func(p machine.Pin) {
 		if p.Get() == true {
 			err = rfm.WriteByteToAddress(REGISTERS_IRQ_FLAGS, 0xFF)
@@ -391,11 +386,16 @@ func (rfm *RFM9x) Send(payload []byte) (err error) {
 		return err
 	}
 	err = rfm.SetOperatingMode(OP_MODES_TRANSMIT)
-	select {
-	case err := <-timeout:
+	if err != nil {
 		return err
-	case <-success:
-		break
+	}
+	timeoutTime := (time.Now().Add(time.Duration(rfm.Options.TxTimeoutMs) * time.Millisecond))
+	for {
+		if time.Now().After(timeoutTime) {
+			return ErrSendTimeOut
+		} else if len(success) == 1 {
+			break
+		}
 	}
 	return err
 }
